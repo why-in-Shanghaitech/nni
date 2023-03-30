@@ -58,7 +58,7 @@ def get_next_parameter():
     return params
 
 def send_metric(string):
-    if _nni_platform != 'local' or _reuse_mode in ('true', 'True'):
+    if _nni_platform not in ['local', 'slurm'] or _reuse_mode in ('true', 'True'):
         assert len(string) < 1000000, 'Metric too long'
         print("NNISDK_MEb'%s'" % (string), flush=True)
     else:

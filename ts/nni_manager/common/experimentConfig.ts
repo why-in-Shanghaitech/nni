@@ -52,6 +52,22 @@ export interface RemoteConfig extends TrainingServiceConfig {
     reuseMode: boolean;
 }
 
+/* Slurm */
+
+export interface SlurmResourceConfig {
+    gres?: string;
+    time?: string;
+    time_min?: string;
+    partition?: string;
+    exclude?: string;
+}
+
+export interface SlurmConfig extends TrainingServiceConfig {
+    platform: 'slurm';
+    resource: SlurmResourceConfig;
+    useSbatch: boolean;
+}
+
 /* OpenPAI */
 
 export interface OpenpaiConfig extends TrainingServiceConfig {

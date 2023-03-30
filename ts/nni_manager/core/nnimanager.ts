@@ -14,7 +14,7 @@ import {
     ExperimentProfile, Manager, ExperimentStatus,
     NNIManagerStatus, ProfileUpdateType, TrialJobStatistics
 } from '../common/manager';
-import { ExperimentConfig, LocalConfig, toSeconds, toCudaVisibleDevices } from '../common/experimentConfig';
+import { ExperimentConfig, LocalConfig, SlurmConfig, toSeconds, toCudaVisibleDevices } from '../common/experimentConfig';
 import { getExperimentsManager } from 'extensions/experiments_manager';
 import { TensorboardManager } from '../common/tensorboardManager';
 import {
@@ -479,6 +479,9 @@ class NNIManager implements Manager {
         } else if (platform === 'local') {
             const module_ = await import('../training_service/local/localTrainingService');
             return new module_.LocalTrainingService(<LocalConfig>config.trainingService);
+        } else if (platform === 'slurm') {
+            const module_ = await import('../training_service/slurm/slurmTrainingService');
+            return new module_.SlurmTrainingService(<SlurmConfig>config.trainingService);
         } else if (platform === 'kubeflow') {
             const module_ = await import('../training_service/kubernetes/kubeflow/kubeflowTrainingService');
             return new module_.KubeflowTrainingService();

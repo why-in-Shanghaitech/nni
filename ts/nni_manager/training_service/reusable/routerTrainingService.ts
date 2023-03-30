@@ -25,6 +25,7 @@ class RouterTrainingService implements TrainingService {
         const instance = new RouterTrainingService();
         instance.log = getLogger('RouterTrainingService');
         const platform = Array.isArray(config.trainingService) ? 'hybrid' : config.trainingService.platform;
+        /* XXX: maybe setup slurm here instead of nnimanager.ts? */
         if (platform === 'remote' && (<RemoteConfig>config.trainingService).reuseMode === false) {
             instance.internalTrainingService = new RemoteMachineTrainingService(<RemoteConfig>config.trainingService);
         } else if (platform === 'openpai' && (<OpenpaiConfig>config.trainingService).reuseMode === false) {

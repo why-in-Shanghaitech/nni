@@ -120,9 +120,7 @@ const OpenRow = (props: OpenRowProps): any => {
                     <PivotItem headerText='Log' key='2' itemIcon='M365InvoicingLogo'>
                         {
                             // FIXME: this should not be handled in web UI side
-                            EXPERIMENT.trainingServicePlatform !== 'local' ? (
-                                <PaiTrialLog logStr={logPathRow} />
-                            ) : (
+                            EXPERIMENT.trainingServicePlatform === 'local' ? (
                                 <div>
                                     <TrialLog logStr={logPathRow} logName='LogPath:' />
                                     {/* view trial log */}
@@ -143,6 +141,39 @@ const OpenRow = (props: OpenRowProps): any => {
                                         />
                                     </div>
                                 </div>
+                            ) : EXPERIMENT.trainingServicePlatform === 'slurm' ? (
+                                <div>
+                                    <TrialLog logStr={logPathRow} logName='LogPath:' />
+                                    {/* view trial log */}
+                                    <div className='copy' style={{ marginTop: 4 }}>
+                                        <PrimaryButton
+                                            onClick={openTrialLog.bind(this, 'trial.log')}
+                                            text='View trial log'
+                                        />
+                                        <PrimaryButton
+                                            onClick={openTrialLog.bind(this, 'stderr')}
+                                            text='View trial error'
+                                            styles={{ root: { marginLeft: 15 } }}
+                                        />
+                                        <PrimaryButton
+                                            onClick={openTrialLog.bind(this, 'stdout')}
+                                            text='View trial stdout'
+                                            styles={{ root: { marginLeft: 15 } }}
+                                        />
+                                        <PrimaryButton
+                                            onClick={openTrialLog.bind(this, 'slurm_stderr')}
+                                            text='View slurm error'
+                                            styles={{ root: { marginLeft: 15 } }}
+                                        />
+                                        <PrimaryButton
+                                            onClick={openTrialLog.bind(this, 'slurm_stdout')}
+                                            text='View slurm stdout'
+                                            styles={{ root: { marginLeft: 15 } }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <PaiTrialLog logStr={logPathRow} />
                             )
                         }
                     </PivotItem>
