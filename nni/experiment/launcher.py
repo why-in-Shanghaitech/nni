@@ -123,7 +123,7 @@ def start_experiment(
         start_time = int(time.time() * 1000)
 
         _logger.info('Starting web server...')
-        _check_rest_server(port, url_prefix=url_prefix)
+        _check_rest_server(port, retry=30, url_prefix=url_prefix)
 
         Experiments().add_experiment(
             exp_id,
