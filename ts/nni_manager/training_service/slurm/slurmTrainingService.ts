@@ -20,7 +20,7 @@ import {
 import {
     delay, generateParamFileName, getExperimentRootDir, getJobCancelStatus, getNewLine, isAlive, uniqueString
 } from 'common/utils';
-import { SlurmResourceConfig, SlurmConfig } from 'common/experimentConfig';
+import { SlurmConfig } from 'common/experimentConfig';
 import { execMkdir, execNewFile, getScriptName, setEnvironmentVariable } from '../common/util';
 import { Deferred } from 'ts-deferred';
 
@@ -325,7 +325,9 @@ class SlurmTrainingService implements TrainingService {
         // important: stop all trials
         const jobs: SlurmTrialJobDetail[] = await this.listTrialJobs();
         for (const job of jobs) {
-            await this.cancelTrialJob(job.id);
+            if (job.status === 'RUNNING') {
+                await cpp.exec(`scancel ${job.slurmJobId}`);
+            }
         }
 
         return Promise.resolve();
@@ -412,7 +414,7 @@ class SlurmTrainingService implements TrainingService {
         return script;
     }
 
-    private getSrunCommand(trialJobId: string, workingDirectory: string, config: SlurmResourceConfig): string[] {
+    private getSrunCommand(trialJobId: string, workingDirectory: string, config: { [key: string]: string | null }): string[] {
         const command: string[] = [];
         command.push(`srun`);
         command.push(`'--job-name=nni-${this.experimentId}-${trialJobId}'`);
@@ -420,26 +422,36 @@ class SlurmTrainingService implements TrainingService {
         command.push(`'--error=${path.join(workingDirectory, 'slurm_stderr')}'`);
         command.push(`'--disable-status'`);
         command.push(`'--unbuffered'`);
-        if (config.gres !== undefined)      command.push(`'--gres=${config.gres}'`);
-        if (config.time !== undefined)      command.push(`'--time=${config.time}'`);
-        if (config.time_min !== undefined)  command.push(`'--time-min=${config.time_min}'`);
-        if (config.partition !== undefined) command.push(`'--partition=${config.partition}'`);
-        if (config.exclude !== undefined)   command.push(`'--exclude=${config.exclude}'`);
+        Object.entries(config).forEach(
+            ([key, value]) => {
+                const prefix: string = (key.length === 1 ? '-' : '--');
+                if (value === null) {
+                    command.push(`'${prefix}${key}'`); // no argument
+                } else {
+                    command.push(`'${prefix}${key}=${value}'`);
+                }
+            }
+        );
         command.push(this.config.trialCommand);
 
         return command;
     }
 
-    private getSbatchHeader(trialJobId: string, workingDirectory: string, config: SlurmResourceConfig): string[] {
+    private getSbatchHeader(trialJobId: string, workingDirectory: string, config: { [key: string]: string | null }): string[] {
         const script: string[] = [];
         script.push(`#SBATCH --job-name=nni-${this.experimentId}-${trialJobId}`);
         script.push(`#SBATCH --output=${path.join(workingDirectory, 'slurm_stdout')}`);
         script.push(`#SBATCH --error=${path.join(workingDirectory, 'slurm_stderr')}`);
-        if (config.gres !== undefined)      script.push(`#SBATCH --gres=${config.gres}`);
-        if (config.time !== undefined)      script.push(`#SBATCH --time=${config.time}`);
-        if (config.time_min !== undefined)  script.push(`#SBATCH --time-min=${config.time_min}`);
-        if (config.partition !== undefined) script.push(`#SBATCH --partition=${config.partition}`);
-        if (config.exclude !== undefined)   script.push(`#SBATCH --exclude=${config.exclude}`);
+        Object.entries(config).forEach(
+            ([key, value]) => {
+                const prefix: string = (key.length === 1 ? '-' : '--');
+                if (value === null) {
+                    script.push(`#SBATCH ${prefix}${key}`); // no argument
+                } else {
+                    script.push(`#SBATCH ${prefix}${key}=${value}`);
+                }
+            }
+        );
         script.push(``); // add an empty line after header
 
         return script;
@@ -480,6 +492,10 @@ class SlurmTrainingService implements TrainingService {
         await execMkdir(trialJobDetail.workingDirectory);
         await execMkdir(path.join(trialJobDetail.workingDirectory, '.nni'));
         await execNewFile(path.join(trialJobDetail.workingDirectory, '.nni', 'metrics'));
+        await execNewFile(path.join(trialJobDetail.workingDirectory, 'stdout'));
+        await execNewFile(path.join(trialJobDetail.workingDirectory, 'stderr'));
+        await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stdout'));
+        await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stderr'));
         const scriptName: string = getScriptName('run');
         await createScriptFile(path.join(trialJobDetail.workingDirectory, scriptName),
                 runScriptContent.join(getNewLine()));

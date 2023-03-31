@@ -54,17 +54,9 @@ export interface RemoteConfig extends TrainingServiceConfig {
 
 /* Slurm */
 
-export interface SlurmResourceConfig {
-    gres?: string;
-    time?: string;
-    time_min?: string;
-    partition?: string;
-    exclude?: string;
-}
-
 export interface SlurmConfig extends TrainingServiceConfig {
     platform: 'slurm';
-    resource: SlurmResourceConfig;
+    resource: { [key: string]: string | null };
     useSbatch: boolean;
 }
 
