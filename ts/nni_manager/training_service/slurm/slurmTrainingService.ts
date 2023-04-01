@@ -332,7 +332,7 @@ class SlurmTrainingService implements TrainingService {
                 await cpp.exec(`scancel ${job.slurmJobId}`);
             }
         }
-        if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb'))) {
+        if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb', 'latest-run'))) {
             this.log.debug(`Upload ${path.join(this.rootDir, 'wandb/offline')}-* to wandb`);
             await cpp.exec(`wandb sync --include-offline ${path.join(this.rootDir, 'wandb/offline')}-*`);
         }
@@ -354,7 +354,7 @@ class SlurmTrainingService implements TrainingService {
                     stream.emit('end');
                     this.jobStreamMap.delete(trialJob.id);
 
-                    if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb'))) {
+                    if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb', 'latest-run'))) {
                         this.log.debug(`Upload ${path.join(this.rootDir, 'wandb/offline')}-* to wandb`);
                         cpp.exec(`wandb sync --include-offline ${path.join(this.rootDir, 'wandb/offline')}-*`);
                     }
