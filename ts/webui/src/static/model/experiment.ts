@@ -1,5 +1,5 @@
 import { MANAGER_IP } from '../const';
-import { ExperimentConfig, toSeconds } from '../experimentConfig';
+import { SlurmConfig, ExperimentConfig, toSeconds } from '../experimentConfig';
 import { ExperimentProfile, ExperimentMetadata, NNIManagerStatus } from '../interface';
 import { requestAxios } from '../function';
 import { SearchSpace } from './searchspace';
@@ -198,6 +198,39 @@ class Experiment {
         }
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         return this.statusField!.errors[0] || '';
+    }
+
+    get useWandb(): boolean {
+        if (this.trainingServicePlatform === 'slurm') {
+            const trainingService: SlurmConfig = <SlurmConfig>this.config.trainingService;
+            return trainingService.useWandb;
+        } else {
+            return false;
+        }
+    }
+
+    get wandbLink(): string {
+        if (this.useWandb) {
+            const trainingService: SlurmConfig = <SlurmConfig>this.config.trainingService;
+            const account: { [key: string]: string } = trainingService.wandbAccount || {};
+            const app_url: string = account['app_url'] || '';
+            const entity: string = account['entity'] || '';
+            const project: string = `NNI-${this.profile.id}`;
+            return `${app_url}/${entity}/${project}`;
+        } else {
+            return '';
+        }
+    }
+
+    get wandbQueries(): string {
+        if (this.useWandb) {
+            const trainingService: SlurmConfig = <SlurmConfig>this.config.trainingService;
+            const account: { [key: string]: string } = trainingService.wandbAccount || {};
+            const qs: string = account['qs'] || '';
+            return `${qs}`;
+        } else {
+            return '';
+        }
     }
 }
 

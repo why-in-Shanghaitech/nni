@@ -58,6 +58,8 @@ export interface SlurmConfig extends TrainingServiceConfig {
     platform: 'slurm';
     resource: { [key: string]: string | null };
     useSbatch: boolean;
+    useWandb: boolean;
+    wandbAccount?: { [key: string]: string };
 }
 
 /* OpenPAI */

@@ -75,6 +75,14 @@ const OpenRow = (props: OpenRowProps): any => {
         window.open(`/netron/index.html?url=${MANAGER_IP}/trial-file/${props.trialId}/model.onnx`);
     };
 
+    const openTrialWandb = (): void => {
+        window.open(
+            `${EXPERIMENT.wandbLink}/runs/${trial.info.sequenceId.toString().padStart(3, '0')}-${props.trialId}${
+                EXPERIMENT.wandbQueries
+            }`
+        );
+    };
+
     return (
         <Stack className='openRow'>
             <Stack className='openRowContent'>
@@ -170,6 +178,22 @@ const OpenRow = (props: OpenRowProps): any => {
                                             text='View slurm stdout'
                                             styles={{ root: { marginLeft: 15 } }}
                                         />
+                                        {EXPERIMENT.useWandb &&
+                                        [
+                                            'SUCCEEDED',
+                                            'FAILED',
+                                            'USER_CANCELED',
+                                            'SYS_CANCELED',
+                                            'EARLY_STOPPED'
+                                        ].includes(trial.info.status) ? (
+                                            <PrimaryButton
+                                                onClick={openTrialWandb.bind(this)}
+                                                text='View W&B Board'
+                                                styles={{ root: { marginLeft: 15 } }}
+                                            />
+                                        ) : (
+                                            <></>
+                                        )}
                                     </div>
                                 </div>
                             ) : (

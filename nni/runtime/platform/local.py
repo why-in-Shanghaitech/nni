@@ -55,6 +55,10 @@ def get_next_parameter():
     params_file = open(params_filepath, 'r')
     params = load(fp=params_file)
     _param_index += 1
+
+    if os.environ.get('USE_WANDB_NNI', None) == 'true':
+        wandb_init(params)
+
     return params
 
 def send_metric(string):
@@ -71,6 +75,9 @@ def send_metric(string):
             file.close()
         else:
             subprocess.run(['touch', _metric_file.name], check=True)
+    
+    if os.environ.get('USE_WANDB_NNI', None) == 'true':
+        wandb_log(string)
 
 def get_experiment_id():
     return trial_env_vars.NNI_EXP_ID
@@ -80,3 +87,28 @@ def get_trial_id():
 
 def get_sequence_id():
     return int(trial_env_vars.NNI_TRIAL_SEQ_ID)
+
+
+def wandb_init(params):
+    import wandb
+    wandb.init(
+        dir=os.path.abspath(os.path.join(_sysdir, "../..")),
+
+        # set the wandb project where this run will be logged
+        project=f"NNI-{trial_env_vars.NNI_EXP_ID}",
+        name=f"{trial_env_vars.NNI_TRIAL_SEQ_ID.zfill(3)}-{trial_env_vars.NNI_TRIAL_JOB_ID}",
+        id=f"{trial_env_vars.NNI_TRIAL_SEQ_ID.zfill(3)}-{trial_env_vars.NNI_TRIAL_JOB_ID}",
+        
+        # track hyperparameters and run metadata
+        config=params,
+        anonymous="allow",
+        mode="offline"
+    )
+
+def wandb_log(string):
+    import wandb
+    dumped_metric = load(string=string)
+    metric = load(dumped_metric.get("value", 0))
+    if not isinstance(metric, dict):
+        metric = {'metric': metric}
+    wandb.log(metric)

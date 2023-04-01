@@ -137,6 +137,20 @@ class NavCon extends React.Component<NavProps, NavState> {
                         <span className='desktop-logo'>{NNILOGO}</span>
                         <span className='left-right-margin'>{OVERVIEWTABS}</span>
                         <span>{DETAILTABS}</span>
+                        {EXPERIMENT.useWandb ? (
+                            <span className='left-right-margin'>
+                                <a
+                                    href={`${EXPERIMENT.wandbLink}${EXPERIMENT.wandbQueries}`}
+                                    className='link'
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                >
+                                    <span className='common-tabs'>W&B Analysis</span>
+                                </a>
+                            </span>
+                        ) : (
+                            <></>
+                        )}
                     </StackItem>
                     <StackItem grow={70} className='navOptions'>
                         <Stack horizontal horizontalAlign='end' tokens={gap15} styles={stackStyle}>

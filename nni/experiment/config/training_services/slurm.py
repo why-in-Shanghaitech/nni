@@ -29,6 +29,8 @@ class SlurmConfig(TrainingServiceConfig):
     platform: Literal['slurm'] = 'slurm'
     resource: Dict[str, Union[str, None]]
     useSbatch: bool = False
+    useWandb: bool = True
+    wandbAccount: Optional[Dict[str, str]] = None
 
     def _canonicalize(self, parents):
         super()._canonicalize(parents)
@@ -39,4 +41,33 @@ class SlurmConfig(TrainingServiceConfig):
 
     def _validate_canonical(self):
         super()._validate_canonical()
-        # TODO: add more validations?
+        
+        if self.useWandb:
+            try:
+                import wandb
+                if wandb.__version__ != '0.12.9':
+                    print(f"WARNING: Version of wandb is {wandb.__version__} instead of 0.12.9. The codes might not work as expected.")
+            except:
+                raise ImportError('Please install wandb by "pip install wandb==0.12.9" to enable weight and bias.')
+            
+            if not wandb.login(anonymous='allow'):
+                raise RuntimeError('wandb api key is not correctly configured. Please try "wandb login --anonymously" to generate an account.')
+        
+            if self.wandbAccount is None:
+                # expose username and apikey to webui
+                from wandb.sdk.lib import apikey
+                from wandb.apis import internal
+                from six.moves.urllib.parse import urlencode
+                app_url = wandb.util.app_url(wandb.Settings().base_url)
+                api = internal.Api()
+                if api.settings().get("anonymous") != "true":
+                    qs = ""
+                else:
+                    api_key = apikey.api_key(settings=wandb.Settings())
+                    qs = "?" + urlencode({"apiKey": api_key})
+                entity = wandb.setup(settings=wandb.Settings())._get_entity()
+                self.wandbAccount = {
+                    'app_url': app_url,
+                    'entity': entity,
+                    'qs': qs
+                }

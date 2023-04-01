@@ -170,6 +170,9 @@ class SlurmTrainingService implements TrainingService {
 
     public async run(): Promise<void> {
         this.log.info('Run slurm machine training service.');
+        if (this.config.useWandb) {
+            await execMkdir(path.join(this.rootDir, 'wandb'), true);
+        }
         const longRunningTasks: Promise<void>[] = [this.runJobLoop()];
         await Promise.all(longRunningTasks);
         this.log.info('Slurm machine training service exit.');
@@ -329,6 +332,10 @@ class SlurmTrainingService implements TrainingService {
                 await cpp.exec(`scancel ${job.slurmJobId}`);
             }
         }
+        if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb'))) {
+            this.log.debug(`Upload ${path.join(this.rootDir, 'wandb/offline')}-* to wandb`);
+            await cpp.exec(`wandb sync --include-offline ${path.join(this.rootDir, 'wandb/offline')}-*`);
+        }
 
         return Promise.resolve();
     }
@@ -346,6 +353,11 @@ class SlurmTrainingService implements TrainingService {
                     stream.end(0);
                     stream.emit('end');
                     this.jobStreamMap.delete(trialJob.id);
+
+                    if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb'))) {
+                        this.log.debug(`Upload ${path.join(this.rootDir, 'wandb/offline')}-* to wandb`);
+                        cpp.exec(`wandb sync --include-offline ${path.join(this.rootDir, 'wandb/offline')}-*`);
+                    }
                 }, 5000);
             }
         }
@@ -353,7 +365,7 @@ class SlurmTrainingService implements TrainingService {
     }
 
     private getEnvironmentVariables( trialJobDetail: TrialJobDetail ): { key: string; value: string }[] {
-        const envVariables: { key: string; value: string }[] = [
+        let envVariables: { key: string; value: string }[] = [
             { key: 'NNI_PLATFORM', value: 'slurm' },
             { key: 'NNI_EXP_ID', value: this.experimentId },
             { key: 'NNI_SYS_DIR', value: trialJobDetail.workingDirectory },
@@ -362,6 +374,13 @@ class SlurmTrainingService implements TrainingService {
             { key: 'NNI_TRIAL_SEQ_ID', value: trialJobDetail.form.sequenceId.toString() },
             { key: 'NNI_CODE_DIR', value: this.config.trialCodeDirectory}
         ];
+
+        if (this.config.useWandb) {
+            envVariables = envVariables.concat([
+                { key: 'USE_WANDB_NNI', value: 'true' },
+                { key: 'WANDB_MODE', value: 'dryrun' }
+            ]);
+        }
 
         return envVariables;
     }

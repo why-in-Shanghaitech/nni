@@ -22,3 +22,5 @@ typeguard == 2.13
 typing_extensions >= 4.0.0
 websockets >= 10.1
 simplejson
+wandb == 0.12.9
+protobuf == 3.19.0
