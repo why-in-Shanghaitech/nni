@@ -1,0 +1,20 @@
+# This is the minimal config file for an NNI experiment.
+# Use "nnictl create --config config.yaml" to launch this experiment.
+# Afterwards, you can check "config_detailed.yaml" for more explanation.
+
+searchSpaceFile: search_space.json
+trialCommand: python model.py
+trialConcurrency: 2
+maxTrialNumber: 4
+tuner:
+  name: TPE
+  classArgs:
+    optimize_mode: maximize
+trainingService:
+  platform: slurm
+  resource:
+    gres: gpu:NVIDIAGeForceRTX2080Ti:1
+    time: 1000
+    partition: critical
+  useSbatch: false
+  useWandb: true
