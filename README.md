@@ -1,281 +1,139 @@
 <div align="center">
-<img src="docs/img/nni_logo.png" width="600"/>
+<img src="docs/img/nni_slurm_logo.png" width="600"/>
 </div>
 
 <br/>
 
-[![MIT licensed](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
-[![Issues](https://img.shields.io/github/issues-raw/Microsoft/nni.svg)](https://github.com/Microsoft/nni/issues?q=is%3Aissue+is%3Aopen)
-[![Bugs](https://img.shields.io/github/issues/Microsoft/nni/bug.svg)](https://github.com/Microsoft/nni/issues?q=is%3Aissue+is%3Aopen+label%3Abug)
-[![Pull Requests](https://img.shields.io/github/issues-pr-raw/Microsoft/nni.svg)](https://github.com/Microsoft/nni/pulls?q=is%3Apr+is%3Aopen)
-[![Version](https://img.shields.io/github/release/Microsoft/nni.svg)](https://github.com/Microsoft/nni/releases)
-[![Documentation Status](https://readthedocs.org/projects/nni/badge/?version=stable)](https://nni.readthedocs.io/en/stable/?badge=stable)
-[![](https://img.shields.io/github/contributors-anon/microsoft/nni)](https://github.com/microsoft/nni/graphs/contributors)
+# NNI with SLURM and W&B
 
+This is a patch for NNI that builds on version v2.10. Now a new training service is available: `slurm`!
 
+## Who might be interested? <sup style="font-size: x-small;">[1]</sup>
 
-[<img src="docs/img/readme_banner.png" width="100%"/>](https://nni.readthedocs.io/en/stable)
+- You use [NNI](https://github.com/microsoft/nni/) to run your machine learning experiments?
+- Your ML experiments run on compute nodes without internet access (for example, using a batch system)?
+- Your compute nodes and your head/login node (with internet) have access to a shared file system?
 
-NNI automates feature engineering, neural architecture search, hyperparameter tuning, and model compression for deep learning. Find the latest features, API, examples and tutorials in our **[official documentation](https://nni.readthedocs.io/) ([简体中文版点这里](https://nni.readthedocs.io/zh/stable))**.
+Then this package might be useful. For [Weights & Biases](https://wandb.ai/) users, you might be interested in this [alternative](https://github.com/klieret/wandb-offline-sync-hook).
 
-## What's NEW! &nbsp;<a href="#nni-released-reminder"><img width="48" src="docs/img/release_icon.png"></a>
+<div align="center">
 
-* **New release**: [v2.10 is available](https://github.com/microsoft/nni/releases/tag/v2.10) - _released on Nov-14-2022_
-* **New demo available**: [Youtube entry](https://www.youtube.com/channel/UCKcafm6861B2mnYhPbZHavw) | [Bilibili 入口](https://space.bilibili.com/1649051673) - _last updated on June-22-2022_
-* **New research paper**: [SparTA: Deep-Learning Model Sparsity via Tensor-with-Sparsity-Attribute](https://www.usenix.org/system/files/osdi22-zheng-ningxin.pdf) - _published in OSDI 2022_
-* **New research paper**: [Privacy-preserving Online AutoML for Domain-Specific Face Detection](https://openaccess.thecvf.com/content/CVPR2022/papers/Yan_Privacy-Preserving_Online_AutoML_for_Domain-Specific_Face_Detection_CVPR_2022_paper.pdf) - _published in CVPR 2022_
-* **Newly upgraded documentation**: [Doc upgraded](https://nni.readthedocs.io/en/stable)
+![SLURM](https://user-images.githubusercontent.com/43395692/229334079-cb31e6ef-3e31-4228-8370-9eb430a40365.png)
 
+</div>
 
-## Installation
+Currently, this patch only supports [SLURM](https://slurm.schedmd.com/overview.html), but it's quite simple to extend to other workload managers (e.g. [PBS](https://www.openpbs.org/)).
 
-See the [NNI installation guide](https://nni.readthedocs.io/en/stable/installation.html) to install from pip, or build from source.
+## Usage
 
-To install the current release:
+This package is built upon NNI. If you are new to NNI, please refer to the [official documents](https://nni.readthedocs.io/en/stable).
 
+If you are a professional NNI user. Simply change your training service to `slurm` (other types are not affected, change it back if needed):
+
+```yaml
+trainingService:
+  platform: slurm
+  resource:
+    gres: gpu:NVIDIAGeForceRTX2080Ti:1  # request 1 2080Ti for each trial
+    time: 1000                          # wall time for each trial
+    partition: critical                 # request partition critical for resource allocation
+  useSbatch: false
+  useWandb: true
 ```
-$ pip install nni
+
+or if you use a python script:
+
+```python
+experiment = Experiment('slurm')
+experiment.config.training_service.resource = {
+    'gres': 'gpu:NVIDIAGeForceRTX2080Ti:1',  # request 1 2080Ti for each trial
+    'time': 1000,                            # wall time for each trial
+    'partition': 'critical'                  # request partition critical for resource allocation
+}
+experiment.config.training_service.useSbatch = False
+experiment.config.training_service.useWandb = True
 ```
 
-To update NNI to the latest version, add `--upgrade` flag to the above commands.
+Then run `nnictl create --config config.yaml` or execute the python script on **the login node**. It will start the NNI server on the login node and submit slurm jobs.
 
-## NNI capabilities in a glance
+### SLURM Training Service
 
-<img src="docs/img/overview.svg" width="100%"/>
+There are only 4 parameters in `slurm` training service:
+- `platform`: `str`. Must be `slurm`.
+- `resource`: `Dict[str, str]`. Arguments to submit **a single job** to SLURM system. Do not add hyphens (`-` or `--`) at the front. Depending on the ways to submit the job (`srun`, `sbatch`), the options might be a little bit different. See SLURM docs ([srun](https://slurm.schedmd.com/srun.html), [sbatch](https://slurm.schedmd.com/sbatch.html)) for more details. Feel free to use numbers -- it will automatically convert to string when reading the config.
+- `useSbatch`: `Optional[bool]`. Use `sbatch` to submit jobs instead of `srun`. The good side is: When the login node crashes accidentally, your job will not be affected. The bad side is: It has a buffer so that the output is delayed (metrics will not be affected). Default: `False`.
+- `useWandb`: `Optional[bool]`. Summit the trail logs to W&B. If you have logged in W&B in your system before, it will use your account. Otherwise, it will automatically create an anonymous account for you. Default: `True`.
 
-<table>
-<tbody>
-<tr align="center" valign="bottom">
-<td></td>
-<td>
-<b>Hyperparameter Tuning</b>
-<img src="docs/img/bar.png" />
-</td>
-<td>
-<b>Neural Architecture Search</b>
-<img src="docs/img/bar.png" />
-</td>
-<td>
-<b>Model Compression</b>
-<img src="docs/img/bar.png" />
-</td>
-</tr>
-<tr valign="top">
-<td align="center" valign="middle">
-<b>Algorithms</b>
-</td>
-<td>
-<ul>
-<li><b>Exhaustive search</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.gridsearch_tuner.GridSearchTuner">Grid Search</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.random_tuner.RandomTuner">Random</a></li>
-</ul>
-<li><b>Heuristic search</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.hyperopt_tuner.HyperoptTuner">Anneal</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.evolution_tuner.EvolutionTuner">Evolution</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.hyperband_advisor.Hyperband">Hyperband</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.pbt_tuner.PBTTuner">PBT</a></li>
-</ul>
-<li><b>Bayesian optimization</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.bohb_advisor.BOHB">BOHB</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.dngo_tuner.DNGOTuner">DNGO</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.gp_tuner.GPTuner">GP</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.metis_tuner.MetisTuner">Metis</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.smac_tuner.SMACTuner">SMAC</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/reference/hpo.html#nni.algorithms.hpo.tpe_tuner.TpeTuner">TPE</a></li>
-</ul>
-</ul>
-</td>
-<td>
-<ul>
-<li><b>Multi-trial</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#grid-search-strategy">Grid Search</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#policy-based-rl-strategy">Policy Based RL</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#random-strategy">Random</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#regularized-evolution-strategy">Regularized Evolution</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#tpe-strategy">TPE</a></li>
-</ul>
-<li><b>One-shot</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#darts-strategy">DARTS</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#enas-strategy">ENAS</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#fbnet-strategy">FBNet</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#proxylessnas-strategy">ProxylessNAS</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/nas/exploration_strategy.html#spos-strategy">SPOS</a></li>
-</ul>
-</ul>
-</td>
-<td>
-<ul>
-<li><b>Pruning</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html#level-pruner">Level</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html#l1-norm-pruner">L1 Norm</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html#taylor-fo-weight-pruner">Taylor FO Weight</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html#movement-pruner">Movement</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html#agp-pruner">AGP</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html#auto-compress-pruner">Auto Compress</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/pruner.html">More...</a></li>
-</ul>
-<li><b>Quantization</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/quantizer.html#naive-quantizer">Naive</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/quantizer.html#qat-quantizer">QAT</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/quantizer.html#lsq-quantizer">LSQ</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/quantizer.html#observer-quantizer">Observer</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/quantizer.html#dorefa-quantizer">DoReFa</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/compression/quantizer.html#bnn-quantizer">BNN</a></li>
-</ul>
-</ul>
-</td>
-<tr align="center" valign="bottom">
-<td></td>
-<td>
-<b>Supported Frameworks</b>
-<img src="docs/img/bar.png" />
-</td>
-<td>
-<b>Training Services</b>
-<img src="docs/img/bar.png" />
-</td>
-<td>
-<b>Tutorials</b>
-<img src="docs/img/bar.png" />
-</td>
-</tr>
-<tr valign="top">
-<td align="center" valign="middle">
-<b>Supports</b>
-</td>
-<td>
-<ul>
-<li>PyTorch</li>
-<li>TensorFlow</li>
-<li>Scikit-learn</li>
-<li>XGBoost</li>
-<li>LightGBM</li>
-<li>MXNet</li>
-<li>Caffe2</li>
-<li>More...</li>
-</ul>
-</td>
-<td>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/local.html">Local machine</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/remote.html">Remote SSH servers</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/aml.html">Azure Machine Learning (AML)</a></li>
-<li><b>Kubernetes Based</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/openpai.html">OpenAPI</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/kubeflow.html">Kubeflow</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/frameworkcontroller.html">FrameworkController</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/adaptdl.html">AdaptDL</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/paidlc.html">PAI DLC</a></li>
-</ul>
-<li><a href="https://nni.readthedocs.io/en/latest/experiment/hybrid.html">Hybrid training services</a></li>
-</ul>
-</td>
-<td>
-<ul>
-<li><b>HPO</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/hpo_quickstart_pytorch/main.html">PyTorch</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/hpo_quickstart_tensorflow/main.html">TensorFlow</a></li>
-</ul>
-<li><b>NAS</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/hello_nas.html">Hello NAS</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/nasbench_as_dataset.html">NAS Benchmarks</a></li>
-</ul>
-<li><b>Compression</b></li>
-<ul>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/pruning_quick_start_mnist.html">Pruning</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/pruning_speed_up.html">Pruning Speedup</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/quantization_quick_start_mnist.html">Quantization</a></li>
-<li><a href="https://nni.readthedocs.io/en/latest/tutorials/quantization_speed_up.html">Quantization Speedup</a></li>
-</ul>
-</ul>
-</td>
-</tbody>
-</table>
+### Example
 
-<img src="docs/static/img/webui.gif" alt="webui" width="100%"/>
+You can find a complete project example [here](https://github.com/whyNLP/nni-slurm/tree/dev-v2.10-slurm/examples/slurm). It is modified from the NNI official tutorial [HPO Quickstart with PyTorch](https://nni.readthedocs.io/zh/stable/tutorials/hpo_quickstart_pytorch/model.html).
 
-## Resources
+## W&B Support
 
-* [NNI Documentation Homepage](https://nni.readthedocs.io/en/stable)
-* [NNI Installation Guide](https://nni.readthedocs.io/en/stable/installation.html)
-* [NNI Examples](https://nni.readthedocs.io/en/latest/examples.html)
-* [Python API Reference](https://nni.readthedocs.io/en/latest/reference/python_api.html)
-* [Releases (Change Log)](https://nni.readthedocs.io/en/latest/release.html)
-* [Related Research and Publications](https://nni.readthedocs.io/en/latest/notes/research_publications.html)
-* [Youtube Channel of NNI](https://www.youtube.com/channel/UCKcafm6861B2mnYhPbZHavw)
-* [Bilibili Space of NNI](https://space.bilibili.com/1649051673)
-* [Webinar of Introducing Retiarii: A deep learning exploratory-training framework on NNI](https://note.microsoft.com/MSR-Webinar-Retiarii-Registration-Live.html)
-* [Community Discussions](https://github.com/microsoft/nni/discussions)
+W&B provides more detailed experiment analysis (e.g. params importance, machine status, .etc).
 
-## Contribution guidelines
+<div align="center">
 
-If you want to contribute to NNI, be sure to review the [contribution guidelines](https://nni.readthedocs.io/en/stable/notes/contributing.html), which includes instructions of submitting feedbacks, best coding practices, and code of conduct.
+<img width="932" alt="image" src="https://user-images.githubusercontent.com/43395692/229332749-3bc5a557-f052-465f-8b0f-f4628616c1ff.png">
 
-We use [GitHub issues](https://github.com/microsoft/nni/issues) to track tracking requests and bugs.
-Please use [NNI Discussion](https://github.com/microsoft/nni/discussions) for general questions and new ideas.
-For questions of specific use cases, please go to [Stack Overflow](https://stackoverflow.com/questions/tagged/nni).
+</div>
 
-Participating discussions via the following IM groups is also welcomed.
+If you enabled `useWandb` (by default), then you are expected to see a new tab on the navigate bar:
 
-|Gitter||WeChat|
-|----|----|----|
-|![image](https://user-images.githubusercontent.com/39592018/80665738-e0574a80-8acc-11ea-91bc-0836dc4cbf89.png)| OR |![image](https://github.com/scarlett2018/nniutil/raw/master/wechat.png)|
+<div align="center">
 
-Over the past few years, NNI has received thousands of feedbacks on GitHub issues, and pull requests from hundreds of contributors.
-We appreciate all contributions from community to make NNI thrive.
+<img width="347" alt="image" src="https://user-images.githubusercontent.com/43395692/229325608-84a98df8-950b-4c3a-8ecc-86c1c0b9856b.png">
 
-<img src="https://img.shields.io/github/contributors-anon/microsoft/nni"/>
+</div>
 
-<a href="https://github.com/microsoft/nni/graphs/contributors"><img src="https://contrib.rocks/image?repo=microsoft/nni&max=240&columns=18" /></a>
+This is the web link to the W&B project of this experiment. After a trial succeeds, you could also see a link to this trial:
 
-## Test status
+<div align="center">
 
-### Essentials
+<img width="824" alt="image" src="https://user-images.githubusercontent.com/43395692/229326602-c52d2e05-048f-4137-bd7b-a2c556c62bcd.png">
 
-| Type | Status |
-| :---: | :---: |
-| Fast test | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/fast%20test?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=54&branchName=master) |
-| Full test - HPO | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/full%20test%20-%20HPO?repoName=microsoft%2Fnni&branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=90&repoName=microsoft%2Fnni&branchName=master) |
-| Full test - NAS | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/full%20test%20-%20NAS?repoName=microsoft%2Fnni&branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=89&repoName=microsoft%2Fnni&branchName=master) |
-| Full test - compression | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/full%20test%20-%20compression?repoName=microsoft%2Fnni&branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=91&repoName=microsoft%2Fnni&branchName=master) |
+</div>
 
-### Training services
+**Caution:** W&B link will only be valid if at least one of the trials succeeds. Only succeeded trials will be recorded by W&B.
 
-| Type | Status |
-| :---: | :---: |
-| Local - linux | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20local%20-%20linux?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=92&branchName=master) |
-| Local - windows | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20local%20-%20windows?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=98&branchName=master) |
-| Remote - linux to linux | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20remote%20-%20linux%20to%20linux?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=64&branchName=master) |
-| Remote - windows to windows | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20remote%20-%20windows%20to%20windows?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=99&branchName=master) |
-| OpenPAI | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20openpai%20-%20linux?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=65&branchName=master) |
-| Frameworkcontroller | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20frameworkcontroller?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=70&branchName=master) |
-| Kubeflow | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20kubeflow?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=69&branchName=master) |
-| Hybrid | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20hybrid?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=79&branchName=master) |
-| AzureML | [![Build Status](https://msrasrg.visualstudio.com/NNIOpenSource/_apis/build/status/integration%20test%20-%20aml?branchName=master)](https://msrasrg.visualstudio.com/NNIOpenSource/_build/latest?definitionId=78&branchName=master) |
+By default, W&B link will be available for 7 days. If you want to keep the data for future analysis, you may claim the experiment to your account. If you have logged in W&B account on the login node, then the experiment will automatically save to your account.
 
-## Related Projects
+## How to Install
 
-Targeting at openness and advancing state-of-art technology, [Microsoft Research (MSR)](https://www.microsoft.com/en-us/research/group/systems-and-networking-research-group-asia/) had also released few other open source projects.
+Just download this patch wheel and do `pip install`:
 
-* [OpenPAI](https://github.com/Microsoft/pai) : an open source platform that provides complete AI model training and resource management capabilities, it is easy to extend and supports on-premise, cloud and hybrid environments in various scale.
-* [FrameworkController](https://github.com/Microsoft/frameworkcontroller) : an open source general-purpose Kubernetes Pod Controller that orchestrate all kinds of applications on Kubernetes by a single controller.
-* [MMdnn](https://github.com/Microsoft/MMdnn) : A comprehensive, cross-framework solution to convert, visualize and diagnose deep neural network models. The "MM" in MMdnn stands for model management and "dnn" is an acronym for deep neural network.
-* [SPTAG](https://github.com/Microsoft/SPTAG) : Space Partition Tree And Graph (SPTAG) is an open source library for large scale vector approximate nearest neighbor search scenario.
-* [nn-Meter](https://github.com/microsoft/nn-Meter) : An accurate inference latency predictor for DNN models on diverse edge devices.
+```sh
+wget https://github.com/whyNLP/nni-slurm/releases/download/v2.11/nni-2.11-py3-none-manylinux1_x86_64.whl
+pip install nni-2.11-py3-none-manylinux1_x86_64.whl
+```
 
-We encourage researchers and students leverage these projects to accelerate the AI development and research.
+## How to Uninstall
 
-## License
+Simply do `pip uninstall nni` will completely remove this patch from your system.
 
-The entire codebase is under [MIT license](LICENSE).
+## Trouble Shooting
+### Error: /lib64/libstdc++.so.6: version `CXXABI_1.3.8' not found
+It might because a low version of gcc. You might want to install gcc through [spack](https://github.com/spack/spack), which only requires a few lines of commands to install packages.
+See microsoft#4914 for more details.
+
+### Failed to establish a new connection: [Errno 111] Connection refused
+This problem might have been fixed in the upcoming NNI 3.0. This patch uses a temporary fix: give it more retries.
+See microsoft#3496 for more details.
+
+### ValueError: ExperimentConfig: type of experiment_name (None) is not typing.Optional[str]
+It has been fixed in this patch.
+See microsoft#5468 for more details.
+
+## Questions
+### Can I run experiments using NNI without this patch?
+It depends. There are some solutions:
+1. Run in `local` mode with srun command. Potential problem: Login node cannot use tail-stream. Listen on file change will fail. The behaviour is that no metric could be updated. 
+2. Run in `remote` mode with srun command, but connect to `localhost`. Potential problem: tmp folder does not sync to compute node. Also, you might not be able to visit login node on the compute node.
+
+See microsoft#1939, microsoft#3717 for more details.
+
+### Will you create a pull request to NNI?
+I have no plan to create a pull request. This patch is not fully tested. The code style is not fully consistent with NNI requirements. I develop this patch for personal use only.
+
+## Reference
+- [1] [Wandb Offline Sync Hook](https://github.com/klieret/wandb-offline-sync-hook)
