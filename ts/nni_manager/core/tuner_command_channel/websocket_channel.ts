@@ -78,10 +78,10 @@ class WebSocketChannelImpl implements WebSocketChannel {
             // TODO: This is a quick fix. It should check tuner's process status instead.
             setTimeout(() => {
                 if (!this.deferredInit.settled) {
-                    const msg = 'Tuner did not connect in 10 seconds. Please check tuner (dispatcher) log.';
+                    const msg = 'Tuner did not connect in 120 seconds. Please check tuner (dispatcher) log.';
                     this.deferredInit.reject(new Error('tuner_command_channel: ' + msg));
                 }
-            }, 10000);
+            }, 120000);
             return this.deferredInit.promise;
 
         } else {

@@ -124,6 +124,9 @@ See microsoft#3496 for more details.
 It has been fixed in this patch.
 See microsoft#5468 for more details.
 
+### Error: tuner_command_channel: Tuner did not connect in 10 seconds. Please check tuner (dispatche) log.
+In most cases, this error means that the login node is too slow (heavy workload on CPU and memory). This patch has extended the connection time to 120 seconds.
+
 ## Questions
 ### Can I run experiments using NNI without this patch?
 It depends. There are some solutions:
