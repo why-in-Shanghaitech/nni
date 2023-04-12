@@ -103,8 +103,8 @@ By default, W&B link will be available for 7 days. If you want to keep the data 
 Just download this patch wheel and do `pip install`:
 
 ```sh
-wget https://github.com/whyNLP/nni-slurm/releases/download/v2.11/nni-2.11-py3-none-manylinux1_x86_64.whl
-pip install nni-2.11-py3-none-manylinux1_x86_64.whl
+wget https://github.com/whyNLP/nni-slurm/releases/download/v2.11.1/nni-2.11.1-py3-none-manylinux1_x86_64.whl
+pip install nni-2.11.1-py3-none-manylinux1_x86_64.whl
 ```
 
 ## How to Uninstall
