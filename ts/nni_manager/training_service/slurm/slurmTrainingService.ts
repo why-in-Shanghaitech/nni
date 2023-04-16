@@ -86,6 +86,7 @@ async function getState(slurmJobId: any): Promise<string> {
         try {
             const result: cpp.childProcessPromise.Result = await cpp.exec(`sacct -j ${slurmJobId} --noheader -o state%30 | head -n 1`);
             state = result.stdout.trim().split(' ')[0];
+            if (state === '') state = 'EMPTY'; // Empty query
         } catch (error) {
             //ignore
         }
@@ -97,7 +98,7 @@ async function getState(slurmJobId: any): Promise<string> {
 /**
  * Find the ID of a slurm job.
  */
-async function getJobID(jobName: string): Promise<number> {
+async function getJobID(jobName: string, testonly: boolean): Promise<number> {
     const deferred: Deferred<number> = new Deferred<number>();
     let slurmJobId: number = -1;
     if (process.platform === 'win32') {
@@ -106,18 +107,24 @@ async function getJobID(jobName: string): Promise<number> {
     else {
         try {
             const startTime = Date.now();
-            let line: string = '';
+            let lines: string[] = [];
             while (slurmJobId === -1) {
                 try {
                     const result: cpp.childProcessPromise.Result = await cpp.exec(`sacct -o jobname%30,jobid%30 -S 0000-01-01 | grep ${jobName}`);
-                    line = result.stdout.split('\n')[0];
+                    lines = result.stdout.split('\n');
                 } catch (error) {
                     // ignore empty query
                 }
-                if (line.match(/error/ig)) throw new Error('srun returns an error.');
-                if (line.length > 30) {
-                    const match: RegExpMatchArray | null = line.slice(30, 61).match(/\d+/g);
-                    if (match) slurmJobId = parseInt(match[0]);
+                // get the most recent valid line
+                for (let index = 0; index < lines.length; index++) {
+                    const line = lines[index];
+                    if (line.length > 30) {
+                        const match: RegExpMatchArray | null = line.slice(30, 61).match(/\d+/g);
+                        if (match) slurmJobId = parseInt(match[0]);
+                    }
+                }
+                if (testonly) {
+                    break;
                 }
                 if (Date.now() - startTime > 60000) {
                     throw new Error('srun does not receive a jobid after 1 min.');
@@ -193,12 +200,16 @@ class SlurmTrainingService implements TrainingService {
         if (trialJob === undefined) {
             throw new NNIError(NNIErrorNames.NOT_FOUND, 'Trial job not found');
         }
-        if (trialJob.status === 'RUNNING') {
+        if (trialJob.slurmJobId === undefined) {
+            this.log.debug(`trialJob ${trialJobId} has no slurm job id.`);
+        } else if (trialJob.status === 'RUNNING') {
             const state: string = await getState(trialJob.slurmJobId);
 
             // touch metric file to trigger tail-stream
             // will be invoked every 5 seconds by nnimanager
-            await cpp.exec(`touch ${path.join(trialJob.workingDirectory, '.nni', 'metrics')}`);
+            if (state !== 'EMPTY') {
+                await cpp.exec(`touch ${path.join(trialJob.workingDirectory, '.nni', 'metrics')}`);
+            }
 
             if (state !== 'RUNNING') {
                 await delay(1000); // avoid last trial emit failure
@@ -223,7 +234,7 @@ class SlurmTrainingService implements TrainingService {
         } else if (trialJob.status === 'WAITING') {
             // update slurm job to running
             const slurmState: string = await getState(trialJob.slurmJobId);
-            if (slurmState === 'RUNNING') {
+            if (slurmState !== 'PENDING' && slurmState !== 'EMPTY') {
                 this.setTrialJobStatus(trialJob, 'RUNNING');
                 trialJob.startTime = Date.now();
             }
@@ -355,8 +366,8 @@ class SlurmTrainingService implements TrainingService {
                     this.jobStreamMap.delete(trialJob.id);
 
                     if (this.config.useWandb && fs.existsSync(path.join(this.rootDir, 'wandb', 'latest-run'))) {
-                        this.log.debug(`Upload ${path.join(this.rootDir, 'wandb/offline')}-* to wandb`);
-                        cpp.exec(`wandb sync --include-offline ${path.join(this.rootDir, 'wandb/offline')}-*`);
+                        this.log.debug(`Upload ${path.join(this.rootDir, 'wandb')} to wandb`);
+                        cpp.exec(`(cd ${this.rootDir}; wandb sync --no-include-synced --include-offline --sync-all)`);
                     }
                 }, 5000);
             }
@@ -507,28 +518,42 @@ class SlurmTrainingService implements TrainingService {
             runScriptContent.push(script);
         });
 
-        // prepare to execute
-        await execMkdir(trialJobDetail.workingDirectory);
-        await execMkdir(path.join(trialJobDetail.workingDirectory, '.nni'));
-        await execNewFile(path.join(trialJobDetail.workingDirectory, '.nni', 'metrics'));
-        await execNewFile(path.join(trialJobDetail.workingDirectory, 'stdout'));
-        await execNewFile(path.join(trialJobDetail.workingDirectory, 'stderr'));
-        await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stdout'));
-        await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stderr'));
-        const scriptName: string = getScriptName('run');
-        await createScriptFile(path.join(trialJobDetail.workingDirectory, scriptName),
-                runScriptContent.join(getNewLine()));
-        await this.writeParameterFile(trialJobDetail.workingDirectory, trialJobDetail.form.hyperParameters);
+        const slurmJobId: number = await getJobID(`nni-${this.experimentId}-${trialJobId}`, true);
+        if (slurmJobId === -1) {
+            // prepare to execute
+            await execMkdir(trialJobDetail.workingDirectory);
+            await execMkdir(path.join(trialJobDetail.workingDirectory, '.nni'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, '.nni', 'metrics'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'stdout'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'stderr'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stdout'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stderr'));
+            const scriptName: string = getScriptName('run');
+            await createScriptFile(path.join(trialJobDetail.workingDirectory, scriptName),
+                    runScriptContent.join(getNewLine()));
+            await this.writeParameterFile(trialJobDetail.workingDirectory, trialJobDetail.form.hyperParameters);
+    
+            // execute the trial
+            if (this.config.useSbatch) {
+                cp.exec(`sbatch '${path.join(trialJobDetail.workingDirectory, scriptName)}'`);
+            } else {
+                cp.exec(`bash '${path.join(trialJobDetail.workingDirectory, scriptName)}'`);
+            }
 
-        // execute the trial
-        if (this.config.useSbatch) {
-            cp.exec(`sbatch '${path.join(trialJobDetail.workingDirectory, scriptName)}'`);
+            // obtain the slurm job ID
+            trialJobDetail.slurmJobId = await getJobID(`nni-${this.experimentId}-${trialJobId}`, false);
         } else {
-            cp.exec(`bash '${path.join(trialJobDetail.workingDirectory, scriptName)}'`);
+            // the job has been executed before
+            await execMkdir(trialJobDetail.workingDirectory);
+            await execMkdir(path.join(trialJobDetail.workingDirectory, '.nni'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, '.nni', 'metrics'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'stdout'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'stderr'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stdout'));
+            await execNewFile(path.join(trialJobDetail.workingDirectory, 'slurm_stderr'));
+            trialJobDetail.slurmJobId = slurmJobId;
         }
 
-        // obtain the slurm job ID
-        trialJobDetail.slurmJobId = await getJobID(`nni-${this.experimentId}-${trialJobId}`);
         this.log.debug(`trial ${trialJobId} gets jobid ${trialJobDetail.slurmJobId}`);
         this.setTrialJobStatus(trialJobDetail, 'WAITING');
         trialJobDetail.startTime = Date.now(); // eslint-disable-line require-atomic-updates

@@ -127,6 +127,16 @@ See microsoft#5468 for more details.
 ### Error: tuner_command_channel: Tuner did not connect in 10 seconds. Please check tuner (dispatche) log.
 In most cases, this error means that the login node is too slow (heavy workload on CPU and memory). This patch has extended the connection time to 120 seconds.
 
+### PermissionError: [Errno 13] Permission denied: '/tmp/debug-cli.log'
+This is a bug from wandb. Change the tmp dir to home could be a quick fix:
+
+```
+mkdir ~/tmp
+export TMPDIR=~/tmp
+```
+
+See [wandb#2845](https://github.com/wandb/wandb/issues/2845) for more details.
+
 ## Questions
 ### Can I run experiments using NNI without this patch?
 It depends. There are some solutions:
@@ -134,6 +144,24 @@ It depends. There are some solutions:
 2. Run in `remote` mode with srun command, but connect to `localhost`. Potential problem: tmp folder does not sync to compute node. Also, you might not be able to visit login node on the compute node.
 
 See microsoft#1939, microsoft#3717 for more details.
+
+An advantage of this patch is that it supports safe resume. Thanks to the slurm system, your trials won't be affected by the failure of NNI manager. If your NNI stops due to error, your existing trials will continue to run. You may resume the experiment later using `nnictl resume <experiment_id>` ([docs](https://nni.readthedocs.io/zh/stable/reference/nnictl.html#nnictl-resume)) or python script ([docs](https://nni.readthedocs.io/zh/stable/reference/experiment.html#nni.experiment.Experiment.resume)). This patch will read the trial logs and update the status, instead of ignoring the running trials. Below is an example of NNI timeline with trial concurrency of 2.
+
+```
+Time line ---+--------------+-----------+---------+-----------+----------------+------------------------------
+
+User      Start NNI -- Go to sleep                                      Wake up, Resume ----------------------
+
+NNI          +--------------------------+------ Error                       Resume -----------------+---------
+
+Trial 1      +---------------------- Finish
+Trial 2      +----------------------------------------------Finish      Register Result
+Trial 3                                 +----------------------------- Register Progress -------- Finish
+Trial 4                                                                        +------------------------------
+Trial 5                                                                                             +---------
+```
+
+Notice that if you stops the experiment manually (e.g. with command `nnictl stop ...`), NNI will cancel all the running trials in order to release the resources.
 
 ### Will you create a pull request to NNI?
 I have no plan to create a pull request. This patch is not fully tested. The code style is not fully consistent with NNI requirements. I develop this patch for personal use only.
